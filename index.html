@@ -209,7 +209,7 @@
           <td data-label="Observação">${person.note || ''}</td>
           <td data-label="Status">${getStatusHTML(person.status || 'Pendente')}</td>
           <td data-label="Ações">
-            <button class="btn-send" onclick="sendMessage(${index})">Enviar</button>
+            <button class="btn-send" onclick="sendMessage(${index})">Enviar Mensagem</button>
             <button class="btn-conclude" onclick="concludePerson(${index})">Concluir</button>
             <button class="btn-delete" onclick="deletePerson(${index})">Excluir</button>
           </td>
