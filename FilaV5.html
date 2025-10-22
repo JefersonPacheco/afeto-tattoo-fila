@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <title>Gerenciador de Fila - Afeto Tattoo</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    * { box-sizing: border-box; }
+
+    body {
+      font-family: "Segoe UI", Arial, sans-serif;
+      padding: 20px;
+      background: #f5f7fa;
+      margin: 0;
+      color: #333;
+    }
+
+    h1 {
+      text-align: center;
+      margin-bottom: 15px;
+      color: #1e3a8a;
+    }
+
+    .card {
+      background: #fff;
+      border-radius: 12px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+      padding: 20px;
+      margin: 10px auto 25px;
+      max-width: 70%;
+    }
+
+    .flex {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      justify-content: center;
+    }
+
+    input, textarea {
+      padding: 10px;
+      border: 1px solid #ccc;
+      border-radius: 8px;
+      flex: 1 1 200px;
+      font-size: 14px;
+    }
+
+    textarea {
+      min-height: 40px;
+	  min-width: 100%;
+      resize: horizontal;
+    }
+
+    button {
+      padding: 10px 20px;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      font-weight: bold;
+      color: white;
+      transition: 0.3s;
+    }
+
+    button:hover {
+      opacity: 0.9;
+    }
+
+    .btn-add { background: #2563eb; }
+    .btn-export { background: #6b7280; }
+    .btn-send { background: #22c55e; }
+    .btn-conclude { background: #0ea5e9; }
+    .btn-delete { background: #ef4444; }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 10px;
+    }
+
+    th, td {
+      padding: 10px;
+      border: 1px solid #ddd;
+      text-align: center;
+    }
+
+    th {
+      background: #1e3a8a;
+      color: white;
+    }
+
+    .status.pendente { color: #dc2626; font-weight: bold; }
+    .status.enviada { color: #2563eb; font-weight: bold; }
+    .status.concluido { color: #16a34a; font-weight: bold; }
+
+    @media (max-width: 768px) {
+      table, thead, tbody, th, td, tr {
+        display: block;
+      }
+
+      thead { display: none; }
+
+      tr {
+        margin-bottom: 15px;
+        background: #fff;
+        border-radius: 10px;
+        box-shadow: 0 1px 4px rgba(0,0,0,0.1);
+        padding: 10px;
+      }
+
+      td {
+        text-align: left;
+        padding: 8px;
+      }
+
+      td::before {
+        content: attr(data-label);
+        font-weight: bold;
+        display: block;
+        color: #1e3a8a;
+      }
+    }
+  </style>
+</head>
+<body>
+  <h1>Afeto Tattoo</h1>
+
+  <div class="card">
+    <h3>Mensagem Padrão do WhatsApp</h3>
+    <textarea id="messageInput" placeholder="Digite aqui a mensagem padrão..."></textarea>
+  </div>
+
+  <div class="card">
+    <form id="form" class="flex">
+      <input type="text" id="name" placeholder="Nome" required>
+      <input type="tel" id="phone" placeholder="Telefone (com DDD)" required>
+      <input type="text" id="note" placeholder="Observação">
+      <button type="submit" class="btn-add">Adicionar</button>
+      <button type="button" class="btn-export" onclick="exportCSV()">Exportar CSV</button>
+    </form>
+  </div>
+
+  <div class="card">
+    <table>
+      <thead>
+        <tr>
+          <th>Ordem</th>
+          <th>Nome</th>
+          <th>Telefone</th>
+          <th>Obs</th>
+          <th>Status</th>
+          <th>Ações</th>
+        </tr>
+      </thead>
+      <tbody id="queueBody"></tbody>
+    </table>
+  </div>
+
+  <script>
+    let queue = JSON.parse(localStorage.getItem('queue')) || [];
+    let defaultMessage = localStorage.getItem('defaultMessage') ||
+      "Olá caro amigo, sua tatuagem já está no forninho, pode vir nos encontrar aqui no Stand!";
+
+    const form = document.getElementById('form');
+    const nameInput = document.getElementById('name');
+    const phoneInput = document.getElementById('phone');
+    const noteInput = document.getElementById('note');
+    const queueBody = document.getElementById('queueBody');
+    const messageInput = document.getElementById('messageInput');
+
+    // Inicializa campo de mensagem padrão
+    messageInput.value = defaultMessage;
+
+    messageInput.addEventListener('input', () => {
+      defaultMessage = messageInput.value;
+      localStorage.setItem('defaultMessage', defaultMessage);
+    });
+
+    function saveQueue() {
+      localStorage.setItem('queue', JSON.stringify(queue));
+    }
+
+    function formatDate(date) {
+      return date.toLocaleDateString('pt-BR') + ' ' +
+        date.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+    }
+
+    function formatPhone(phone) {
+      return phone.replace(/(\d{2})(\d{5})(\d{4})/, '($1) $2-$3');
+    }
+
+    function getStatusHTML(statusText) {
+      if (!statusText || statusText === "Pendente")
+        return `<span class='status pendente'>Pendente</span>`;
+      if (statusText.startsWith("Mensagem enviada"))
+        return `<span class='status enviada'>${statusText}</span>`;
+      if (statusText === "Concluído")
+        return `<span class='status concluido'>Concluído</span>`;
+      return `<span class='status'>${statusText}</span>`;
+    }
+
+    function renderQueue() {
+      queueBody.innerHTML = '';
+      queue.forEach((person, index) => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td data-label="Ordem">${index + 1}</td>
+          <td data-label="Nome">${person.name}</td>
+          <td data-label="Telefone">${formatPhone(person.phone)}</td>
+          <td data-label="Observação">${person.note || ''}</td>
+          <td data-label="Status">${getStatusHTML(person.status || 'Pendente')}</td>
+          <td data-label="Ações">
+            <button class="btn-send" onclick="sendMessage(${index})">Enviar</button>
+            <button class="btn-conclude" onclick="concludePerson(${index})">Concluir</button>
+            <button class="btn-delete" onclick="deletePerson(${index})">Excluir</button>
+          </td>
+        `;
+        queueBody.appendChild(tr);
+      });
+    }
+
+    function sendMessage(index) {
+      const person = queue[index];
+      const number = person.phone.replace(/\D/g, '');
+      const message = encodeURIComponent(defaultMessage);
+      const url = `https://wa.me/55${number}?text=${message}`;
+      window.open(url, '_blank');
+
+      const now = new Date();
+      person.status = `Mensagem enviada ${formatDate(now)}`;
+      saveQueue();
+      renderQueue();
+    }
+
+    function concludePerson(index) {
+      if (confirm("Deseja marcar este contato como concluído?")) {
+        queue[index].status = "Concluído";
+        saveQueue();
+        renderQueue();
+      }
+    }
+
+    function deletePerson(index) {
+      if (confirm("Tem certeza que deseja excluir esse contato?")) {
+        queue.splice(index, 1);
+        saveQueue();
+        renderQueue();
+      }
+    }
+
+    form.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const name = nameInput.value.trim();
+      let phone = phoneInput.value.trim().replace(/\D/g, '');
+      const note = noteInput.value.trim();
+
+      if (name && phone.length >= 10) {
+        queue.push({ name, phone, note, status: 'Pendente' });
+        saveQueue();
+        renderQueue();
+        form.reset();
+        nameInput.focus();
+      } else {
+        alert("Por favor, preencha todos os campos corretamente.");
+      }
+    });
+
+    function exportCSV() {
+      if (queue.length === 0) {
+        alert("Nenhum contato para exportar.");
+        return;
+      }
+      const header = ["Nome", "Telefone", "Obs", "Status"];
+      const rows = queue.map(p => [p.name, p.phone, p.note || '', p.status]);
+      const csvContent = [header, ...rows].map(e => e.join(",")).join("\n");
+
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "contatos_fila.csv";
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+
+    renderQueue();
+  </script>
+</body>
+</html>
